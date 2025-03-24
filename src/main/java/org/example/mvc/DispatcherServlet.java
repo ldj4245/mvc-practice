@@ -1,6 +1,5 @@
 package org.example.mvc;
 
-import org.example.mvc.controller.Controller;
 import org.example.mvc.controller.HandlerKey;
 import org.example.mvc.controller.RequestMethod;
 import org.example.mvc.view.JspViewResolver;
@@ -10,7 +9,6 @@ import org.example.mvc.view.ViewResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -18,7 +16,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 
 @WebServlet("/")
@@ -26,7 +23,7 @@ public class DispatcherServlet extends HttpServlet {
 
     private static final Logger log = LoggerFactory.getLogger(DispatcherServlet.class);
 
-    private RequestMappingHandlerMapping rmhm;
+    private List<HandlerMapping> handlerMappings;
 
     private List<HandlerAdapter> handlerAdapters;
 
@@ -35,10 +32,15 @@ public class DispatcherServlet extends HttpServlet {
 
     @Override
     public void init() throws ServletException {
-        rmhm = new RequestMappingHandlerMapping();
+        RequestMappingHandlerMapping rmhm = new RequestMappingHandlerMapping();
         rmhm.init();
 
-        handlerAdapters = List.of(new SimpleControllerHandlerAdapter());
+        AnnotationHandlerMapping ahm = new AnnotationHandlerMapping("org.example");
+
+        handlerMappings = List.of(rmhm,ahm);
+
+
+        handlerAdapters = List.of(new SimpleControllerHandlerAdapter(),new AnnotationHandlerAdapter());
 
         viewResolvers = Collections.singletonList(new JspViewResolver());
     }
@@ -47,11 +49,15 @@ public class DispatcherServlet extends HttpServlet {
     protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 
 
-
+    String requestURI = req.getRequestURI();
+    RequestMethod requestMethod = RequestMethod.valueOf(req.getMethod());
 
         try{
-            Controller handler = rmhm.findHandler(new HandlerKey(RequestMethod.valueOf(req.getMethod()),req.getRequestURI()));
-            // redirect:/users
+            Object handler = handlerMappings.stream()
+                    .filter(hm -> hm.findHandler(new HandlerKey(requestMethod,requestURI)) != null)
+                    .map(hm ->hm.findHandler(new HandlerKey(requestMethod, requestURI)))
+                    .findFirst()
+                    .orElseThrow(()-> new ServletException("No handler for [" + requestMethod + ", " + requestURI + "]"));
 
             HandlerAdapter handlerAdapter = handlerAdapters.stream()
                     .filter(ha -> ha.supports(handler))
